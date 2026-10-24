@@ -24,6 +24,7 @@ public sealed class Plugin : IDalamudPlugin
     internal PluginConfiguration Configuration { get; }
     internal ArmoireResolver ArmoireResolver { get; }
     internal ItemCategorizer ItemCategorizer { get; }
+    internal AutoRetainerIpc AutoRetainerIpc { get; }
 
     internal readonly WindowSystem WindowSystem = new("OnionSquire");
     private readonly MainWindow mainWindow;
@@ -34,6 +35,7 @@ public sealed class Plugin : IDalamudPlugin
 
         ArmoireResolver = new ArmoireResolver(DataManager);
         ItemCategorizer = new ItemCategorizer(DataManager);
+        AutoRetainerIpc = new AutoRetainerIpc(PluginInterface);
 
         mainWindow = new MainWindow(this);
         WindowSystem.AddWindow(mainWindow);

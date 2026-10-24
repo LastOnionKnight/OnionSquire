@@ -31,6 +31,17 @@ public sealed class MainWindow : Window
     public override void Draw()
     {
         ImGui.TextUnformatted("OnionSquire — Smart Retainer & Armoire Steward");
+        ImGui.SameLine();
+
+        if (plugin.AutoRetainerIpc.IsAvailable)
+        {
+            ImGui.TextColored(new Vector4(0.3f, 1f, 0.4f, 1f), "[AutoRetainer Connected]");
+        }
+        else
+        {
+            ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1f), "[AutoRetainer Standby]");
+        }
+
         ImGui.Separator();
 
         if (ImGui.BeginTabBar("OnionSquireTabs"))

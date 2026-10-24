@@ -1,0 +1,14 @@
+# Build outputs
+bin/
+obj/
+*.user
+*.suo
+
+# Packaging & dist
+dist/
+*.nupkg
+
+# IDE
+.vs/
+.vscode/
+.idea/

@@ -42,6 +42,16 @@ public sealed class MainWindow : Window
             ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1f), "[AutoRetainer Standby]");
         }
 
+        ImGui.SameLine();
+        if (plugin.ArrService.IsArrInstalled)
+        {
+            ImGui.TextColored(new Vector4(0.3f, 0.9f, 1f, 1f), "[ARR Linked]");
+        }
+        else
+        {
+            ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), "[ARR Not Detected]");
+        }
+
         ImGui.Separator();
 
         if (ImGui.BeginTabBar("OnionSquireTabs"))
@@ -119,6 +129,14 @@ public sealed class MainWindow : Window
         ImGui.Spacing();
 
         ImGui.TextUnformatted($"Known Armoire catalog entries: {armoireResolver.TotalEligibleArmoireItems}");
+        
+        var cachedArmoire = plugin.ArrService.LoadCachedArmoireIds();
+        if (cachedArmoire.Count > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(new Vector4(0.4f, 1f, 0.4f, 1f), $"({cachedArmoire.Count} already stored in Armoire)");
+        }
+
         ImGui.Spacing();
 
         if (ImGui.Button("🧳 Scan & Draw Armoire Items", new Vector2(240, 32)))
@@ -128,7 +146,35 @@ public sealed class MainWindow : Window
 
         ImGui.Spacing();
         ImGui.Separator();
-        ImGui.TextDisabled("No armoire items currently queued for withdrawal.");
+
+        var retainers = plugin.ArrService.LoadCachedRetainers();
+        if (retainers.Count > 0)
+        {
+            int armoireFound = 0;
+            foreach (var kvp in retainers)
+            {
+                foreach (var itemId in kvp.Value.ItemIds)
+                {
+                    if (armoireResolver.IsArmoireEligible(itemId) && !cachedArmoire.Contains(itemId))
+                    {
+                        armoireFound++;
+                    }
+                }
+            }
+
+            if (armoireFound > 0)
+            {
+                ImGui.TextColored(new Vector4(1f, 0.8f, 0.3f, 1f), $"Found {armoireFound} armoire-eligible items across {retainers.Count} retainers ready to draw!");
+            }
+            else
+            {
+                ImGui.TextDisabled($"No un-stored armoire items found across {retainers.Count} cached retainers.");
+            }
+        }
+        else
+        {
+            ImGui.TextDisabled("No armoire items currently queued for withdrawal. (Visit Summoning Bell with ARR enabled to populate cache)");
+        }
     }
 
     private void DrawSettingsTab()

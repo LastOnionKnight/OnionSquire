@@ -19,6 +19,14 @@ public sealed class SortPlanItem
     public string TargetRetainerName { get; set; } = string.Empty;
 }
 
+public sealed class ArmoireFoundItem
+{
+    public uint ItemId { get; set; }
+    public string ItemName { get; set; } = string.Empty;
+    public string RetainerName { get; set; } = string.Empty;
+    public ulong RetainerId { get; set; }
+}
+
 public sealed class BagSorterService : IDisposable
 {
     private static readonly InventoryType[] PlayerBags =
@@ -42,24 +50,27 @@ public sealed class BagSorterService : IDisposable
 
     private readonly PluginConfiguration configuration;
     private readonly ItemCategorizer itemCategorizer;
+    private readonly ArmoireResolver armoireResolver;
     private readonly RetainerService retainerService;
     private readonly AutoRetainerIpc autoRetainerIpc;
     private readonly IFramework? framework;
     private readonly IChatGui? chatGui;
     private readonly IPluginLog? log;
 
-    private readonly Queue<(InventoryType srcBag, ushort srcSlot, InventoryType dstPage, ushort dstSlot, uint itemId, string itemName)> moveQueue = new();
+    private readonly Queue<(InventoryType srcContainer, ushort srcSlot, InventoryType dstContainer, ushort dstSlot, uint itemId, string itemName, bool isArmoireWithdrawal)> moveQueue = new();
     private string activeProcessingRetainer = string.Empty;
+    private string lastObservedRetainer = string.Empty;
     private int throttleTicks = 0;
-    private int sessionDepositedCount = 0;
+    private int sessionMovedCount = 0;
 
     public bool IsSorting => moveQueue.Count > 0;
     public string StatusMessage { get; private set; } = "Ready";
-    public int LastDepositedCount { get; private set; } = 0;
+    public int LastMovedCount { get; private set; } = 0;
 
     public BagSorterService(
         PluginConfiguration configuration,
         ItemCategorizer itemCategorizer,
+        ArmoireResolver armoireResolver,
         RetainerService retainerService,
         AutoRetainerIpc autoRetainerIpc,
         IFramework? framework = null,
@@ -68,6 +79,7 @@ public sealed class BagSorterService : IDisposable
     {
         this.configuration = configuration;
         this.itemCategorizer = itemCategorizer;
+        this.armoireResolver = armoireResolver;
         this.retainerService = retainerService;
         this.autoRetainerIpc = autoRetainerIpc;
         this.framework = framework;
@@ -110,6 +122,25 @@ public sealed class BagSorterService : IDisposable
         }
 
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Gets the total number of empty slots in the player's inventory bags.
+    /// </summary>
+    public unsafe int GetFreePlayerInventorySlots()
+    {
+        try
+        {
+            var im = InventoryManager.Instance();
+            if (im != null)
+            {
+                return (int)im->GetEmptySlotsInBag();
+            }
+        }
+        catch
+        {
+        }
+        return 0;
     }
 
     /// <summary>
@@ -175,8 +206,86 @@ public sealed class BagSorterService : IDisposable
     }
 
     /// <summary>
-    /// Starts the sorting process. If a retainer is currently active, deposits matching items into it.
-    /// If no retainer is active, plans the sort and informs the user.
+    /// Finds all Armoire-eligible items currently in the active retainer's inventory pages.
+    /// </summary>
+    public unsafe List<(InventoryType page, ushort slot, uint itemId, string itemName)> GetActiveRetainerArmoireItems()
+    {
+        var list = new List<(InventoryType page, ushort slot, uint itemId, string itemName)>();
+        try
+        {
+            var im = InventoryManager.Instance();
+            if (im == null) return list;
+
+            foreach (var page in RetainerPages)
+            {
+                var container = im->GetInventoryContainer(page);
+                if (container == null || !container->IsLoaded) continue;
+
+                for (int s = 0; s < container->Size; s++)
+                {
+                    var slot = container->GetInventorySlot(s);
+                    if (slot != null && slot->ItemId > 0 && armoireResolver.IsArmoireEligible(slot->ItemId))
+                    {
+                        list.Add((page, (ushort)s, slot->ItemId, itemCategorizer.GetItemName(slot->ItemId)));
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            log?.Debug(ex, "Failed to scan active retainer for Armoire items.");
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// Withdraws Armoire-eligible items from the active retainer into player inventory bags.
+    /// </summary>
+    public unsafe int DrawArmoireFromActiveRetainer()
+    {
+        if (moveQueue.Count > 0) return 0;
+
+        string activeRetainer = GetActiveRetainerName();
+        if (string.IsNullOrEmpty(activeRetainer)) return 0;
+
+        var armoireItems = GetActiveRetainerArmoireItems();
+        if (armoireItems.Count == 0) return 0;
+
+        var im = InventoryManager.Instance();
+        if (im == null) return 0;
+
+        var claimedSlots = new HashSet<(InventoryType bag, ushort slot)>();
+        int queued = 0;
+
+        foreach (var (srcPage, srcSlot, itemId, itemName) in armoireItems)
+        {
+            if (TryFindEmptyPlayerSlot(im, claimedSlots, out var dstBag, out var dstSlot))
+            {
+                claimedSlots.Add((dstBag, dstSlot));
+                moveQueue.Enqueue((srcPage, srcSlot, dstBag, dstSlot, itemId, itemName, true));
+                queued++;
+            }
+            else
+            {
+                chatGui?.Print($"[OnionSquire] Player inventory is full! Could only withdraw {queued} Armoire items.");
+                break;
+            }
+        }
+
+        if (queued > 0)
+        {
+            activeProcessingRetainer = activeRetainer;
+            sessionMovedCount = 0;
+            StatusMessage = $"Pulling {queued} Armoire items from {activeRetainer}...";
+            chatGui?.Print($"[OnionSquire] Pulling {queued} Armoire items from {activeRetainer} into player inventory...");
+        }
+
+        return queued;
+    }
+
+    /// <summary>
+    /// Executes sorting bags into retainers. If a retainer is open, deposits matching items.
     /// </summary>
     public unsafe bool ExecuteSort()
     {
@@ -201,13 +310,13 @@ public sealed class BagSorterService : IDisposable
     }
 
     /// <summary>
-    /// Enqueues item transfers for the specified retainer while its inventory is loaded.
+    /// Enqueues item transfers from player bags into the specified retainer while its inventory is loaded.
     /// </summary>
     public unsafe bool SortIntoRetainer(string retainerName)
     {
         if (moveQueue.Count > 0)
         {
-            StatusMessage = "Deposit already in progress...";
+            StatusMessage = "Operation already in progress...";
             return false;
         }
 
@@ -247,16 +356,15 @@ public sealed class BagSorterService : IDisposable
             return false;
         }
 
-        // Find available destination slots in the retainer's pages
         activeProcessingRetainer = retainerName;
-        sessionDepositedCount = 0;
+        sessionMovedCount = 0;
         int planned = 0;
 
         foreach (var (srcBag, srcSlot, itemId, name) in itemsToMove)
         {
-            if (TryFindDestinationSlot(im, itemId, out var dstPage, out var dstSlot))
+            if (TryFindDestinationRetainerSlot(im, itemId, out var dstPage, out var dstSlot))
             {
-                moveQueue.Enqueue((srcBag, srcSlot, dstPage, dstSlot, itemId, name));
+                moveQueue.Enqueue((srcBag, srcSlot, dstPage, dstSlot, itemId, name, false));
                 planned++;
             }
         }
@@ -275,7 +383,7 @@ public sealed class BagSorterService : IDisposable
         }
     }
 
-    private unsafe bool TryFindDestinationSlot(InventoryManager* im, uint itemId, out InventoryType page, out ushort slot)
+    private unsafe bool TryFindDestinationRetainerSlot(InventoryManager* im, uint itemId, out InventoryType page, out ushort slot)
     {
         page = InventoryType.RetainerPage1;
         slot = 0;
@@ -324,17 +432,63 @@ public sealed class BagSorterService : IDisposable
         return false;
     }
 
+    private unsafe bool TryFindEmptyPlayerSlot(
+        InventoryManager* im,
+        HashSet<(InventoryType bag, ushort slot)> claimedSlots,
+        out InventoryType bag,
+        out ushort slot)
+    {
+        bag = InventoryType.Inventory1;
+        slot = 0;
+        foreach (var b in PlayerBags)
+        {
+            var c = im->GetInventoryContainer(b);
+            if (c == null || !c->IsLoaded) continue;
+
+            for (int s = 0; s < c->Size; s++)
+            {
+                if (claimedSlots.Contains((b, (ushort)s))) continue;
+                var item = c->GetInventorySlot(s);
+                if (item == null || item->ItemId == 0)
+                {
+                    bag = b;
+                    slot = (ushort)s;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private unsafe void OnFrameworkUpdate(IFramework fw)
     {
+        string currentActive = GetActiveRetainerName();
+
+        // Detect newly opened retainer
+        if (!string.IsNullOrEmpty(currentActive) && currentActive != lastObservedRetainer)
+        {
+            lastObservedRetainer = currentActive;
+
+            // Automatically draw armoire items if enabled
+            if (configuration.AutoDrawArmoireOnRetainerOpen && moveQueue.Count == 0)
+            {
+                DrawArmoireFromActiveRetainer();
+            }
+        }
+        else if (string.IsNullOrEmpty(currentActive))
+        {
+            lastObservedRetainer = string.Empty;
+        }
+
         if (moveQueue.Count == 0) return;
 
-        // Throttle transfers: execute 1 item move every 8 frames (~133ms at 60fps)
+        // Throttle transfers: 1 item move every 8 frames (~133ms)
         if (++throttleTicks % 8 != 0) return;
 
         var im = InventoryManager.Instance();
         if (im == null) return;
 
-        // Check if an operation is currently pending
+        // Check if game is currently busy with another operation
         try
         {
             if (im->PendingOperations.Length > 0) return;
@@ -343,31 +497,38 @@ public sealed class BagSorterService : IDisposable
         {
         }
 
-        var (srcBag, srcSlot, dstPage, dstSlot, itemId, itemName) = moveQueue.Dequeue();
+        var (srcContainer, srcSlot, dstContainer, dstSlot, itemId, itemName, isArmoireWithdrawal) = moveQueue.Dequeue();
 
         try
         {
-            // Verify item is still in source slot
-            var srcContainer = im->GetInventoryContainer(srcBag);
-            if (srcContainer != null && srcContainer->IsLoaded)
+            var srcC = im->GetInventoryContainer(srcContainer);
+            if (srcC != null && srcC->IsLoaded)
             {
-                var currentItem = srcContainer->GetInventorySlot(srcSlot);
-                if (currentItem != null && currentItem->ItemId == itemId)
+                var cur = srcC->GetInventorySlot(srcSlot);
+                if (cur != null && cur->ItemId == itemId)
                 {
-                    im->MoveItemSlot(srcBag, srcSlot, dstPage, dstSlot, false);
-                    sessionDepositedCount++;
+                    im->MoveItemSlot(srcContainer, srcSlot, dstContainer, dstSlot, false);
+                    sessionMovedCount++;
                 }
             }
         }
         catch (Exception ex)
         {
-            log?.Error(ex, $"Failed to move {itemName} from {srcBag}:{srcSlot} to {dstPage}:{dstSlot}.");
+            log?.Error(ex, $"Failed to move {itemName} from {srcContainer}:{srcSlot} to {dstContainer}:{dstSlot}.");
         }
 
         if (moveQueue.Count == 0)
         {
-            LastDepositedCount = sessionDepositedCount;
-            StatusMessage = $"Finished depositing {sessionDepositedCount} items into {activeProcessingRetainer}!";
+            LastMovedCount = sessionMovedCount;
+            if (isArmoireWithdrawal)
+            {
+                StatusMessage = $"Finished pulling {sessionMovedCount} Armoire items from {activeProcessingRetainer} into your inventory!";
+            }
+            else
+            {
+                StatusMessage = $"Finished depositing {sessionMovedCount} items into {activeProcessingRetainer}!";
+            }
+
             chatGui?.Print($"[OnionSquire] {StatusMessage}");
 
             // Notify AutoRetainer if in postprocess step

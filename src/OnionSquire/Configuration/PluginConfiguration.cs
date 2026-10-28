@@ -36,6 +36,11 @@ public sealed class PluginConfiguration : IPluginConfiguration
     /// </summary>
     public bool AutoCheckArmoireOnBellOpen { get; set; } = true;
 
+    /// <summary>
+    /// When true, automatically withdraws Armoire-eligible items into player inventory when a retainer is opened.
+    /// </summary>
+    public bool AutoDrawArmoireOnRetainerOpen { get; set; } = true;
+
     public void Save()
     {
         try

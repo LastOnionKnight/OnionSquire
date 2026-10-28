@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -34,7 +35,7 @@ public sealed class MainWindow : Window
 
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(520, 440),
+            MinimumSize = new Vector2(520, 460),
             MaximumSize = new Vector2(900, 850),
         };
     }
@@ -242,47 +243,113 @@ public sealed class MainWindow : Window
         }
 
         ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
 
-        if (ImGui.Button("🧳 Scan & Draw Armoire Items", new Vector2(240, 32)))
+        bool autoDraw = configuration.AutoDrawArmoireOnRetainerOpen;
+        if (ImGui.Checkbox("Automatically pull Armoire items into my bags when a retainer is opened", ref autoDraw))
         {
-            // Scan retainer caches and enqueue withdrawals
+            configuration.AutoDrawArmoireOnRetainerOpen = autoDraw;
+            configuration.Save();
+        }
+
+        ImGui.Spacing();
+
+        int freeSlots = plugin.BagSorterService.GetFreePlayerInventorySlots();
+        ImGui.TextColored(freeSlots > 0 ? new Vector4(0.4f, 1f, 0.4f, 1f) : new Vector4(1f, 0.4f, 0.4f, 1f),
+            $"🎒 Player Inventory: {freeSlots} / 140 free slots available");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        string activeRetainer = plugin.BagSorterService.GetActiveRetainerName();
+        if (!string.IsNullOrEmpty(activeRetainer))
+        {
+            var activeItems = plugin.BagSorterService.GetActiveRetainerArmoireItems();
+            ImGui.TextColored(new Vector4(0.3f, 0.9f, 1f, 1f), $"Active Retainer: {activeRetainer}");
+
+            if (activeItems.Count > 0)
+            {
+                ImGui.TextColored(new Vector4(1f, 0.85f, 0.3f, 1f), $"Found {activeItems.Count} Armoire-eligible items in {activeRetainer}'s bags:");
+                foreach (var item in activeItems)
+                {
+                    ImGui.BulletText(item.itemName);
+                }
+
+                ImGui.Spacing();
+                bool isSorting = plugin.BagSorterService.IsSorting;
+                if (isSorting)
+                {
+                    ImGui.BeginDisabled();
+                    ImGui.Button("⏳ Pulling Items...", new Vector2(280, 34));
+                    ImGui.EndDisabled();
+                }
+                else
+                {
+                    if (ImGui.Button($"🧳 Pull {activeItems.Count} Armoire Items into Inventory", new Vector2(280, 34)))
+                    {
+                        plugin.BagSorterService.DrawArmoireFromActiveRetainer();
+                    }
+                }
+            }
+            else
+            {
+                ImGui.TextDisabled($"No armoire-eligible items found in {activeRetainer}.");
+            }
+        }
+        else
+        {
+            ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.5f, 1f), "💡 Select any retainer at the Summoning Bell (or run AutoRetainer) to automatically pull Armoire items.");
         }
 
         ImGui.Spacing();
         ImGui.Separator();
+        ImGui.Spacing();
 
-        var retainers = plugin.ArrService.LoadCachedRetainers();
-        if (retainers.Count > 0)
+        // Cached retainers breakdown
+        var cachedRetainers = plugin.ArrService.LoadCachedRetainers();
+        if (cachedRetainers.Count > 0)
         {
-            int armoireFound = 0;
-            foreach (var kvp in retainers)
+            var foundList = new List<(string RetainerName, string ItemName)>();
+
+            foreach (var kvp in cachedRetainers)
             {
                 foreach (var itemId in kvp.Value.ItemIds)
                 {
                     if (armoireResolver.IsArmoireEligible(itemId) && !cachedArmoire.Contains(itemId))
                     {
-                        armoireFound++;
+                        foundList.Add((kvp.Value.Name, plugin.ItemCategorizer.GetItemName(itemId)));
                     }
                 }
             }
 
-            if (armoireFound > 0)
+            if (foundList.Count > 0)
             {
-                ImGui.TextColored(new Vector4(1f, 0.8f, 0.3f, 1f), $"Found {armoireFound} armoire-eligible items across {retainers.Count} retainers ready to draw!");
+                ImGui.TextColored(new Vector4(1f, 0.8f, 0.3f, 1f), $"Found {foundList.Count} Armoire items waiting in retainers:");
+                foreach (var (retName, itemName) in foundList)
+                {
+                    ImGui.BulletText($"{itemName} (in {retName})");
+                }
             }
             else
             {
-                ImGui.TextDisabled($"No un-stored armoire items found across {retainers.Count} cached retainers.");
+                ImGui.TextDisabled($"All known items across your {cachedRetainers.Count} cached retainers are already in the Armoire or not eligible.");
             }
-        }
-        else
-        {
-            ImGui.TextDisabled("No armoire items currently queued for withdrawal. (Visit Summoning Bell with ARR enabled to populate cache)");
         }
     }
 
     private void DrawSettingsTab()
     {
+        ImGui.Spacing();
+
+        bool autoDraw = configuration.AutoDrawArmoireOnRetainerOpen;
+        if (ImGui.Checkbox("Automatically pull Armoire items into my bags when a retainer is opened", ref autoDraw))
+        {
+            configuration.AutoDrawArmoireOnRetainerOpen = autoDraw;
+            configuration.Save();
+        }
+
         ImGui.Spacing();
 
         bool autoCheck = configuration.AutoCheckArmoireOnBellOpen;

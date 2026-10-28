@@ -44,7 +44,7 @@ public sealed class Plugin : IDalamudPlugin
         AutoRetainerIpc = new AutoRetainerIpc(PluginInterface);
         ArrService = new ArrService(PluginInterface, Log);
         RetainerService = new RetainerService(DataManager, PlayerState, Configuration, Log);
-        BagSorterService = new BagSorterService(Configuration, ItemCategorizer, RetainerService, AutoRetainerIpc, Framework, ChatGui, Log);
+        BagSorterService = new BagSorterService(Configuration, ItemCategorizer, ArmoireResolver, RetainerService, AutoRetainerIpc, Framework, ChatGui, Log);
 
         mainWindow = new MainWindow(this);
         WindowSystem.AddWindow(mainWindow);

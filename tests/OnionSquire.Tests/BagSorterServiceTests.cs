@@ -14,8 +14,9 @@ public class BagSorterServiceTests
     {
         var config = new PluginConfiguration();
         var categorizer = new ItemCategorizer(null);
+        var armoireResolver = new ArmoireResolver(null);
         var retainerService = new RetainerService(null, null, config, null);
-        var sorter = new BagSorterService(config, categorizer, retainerService, new AutoRetainerIpc(null!));
+        var sorter = new BagSorterService(config, categorizer, armoireResolver, retainerService, new AutoRetainerIpc(null));
 
         Assert.False(sorter.IsSorting);
         Assert.Equal("Ready", sorter.StatusMessage);
@@ -28,12 +29,26 @@ public class BagSorterServiceTests
         config.RetainerRoles["Ravey"] = RetainerRole.FoodAndPotions;
 
         var categorizer = new ItemCategorizer(null);
+        var armoireResolver = new ArmoireResolver(null);
         var retainerService = new RetainerService(null, null, config, null);
-        var sorter = new BagSorterService(config, categorizer, retainerService, new AutoRetainerIpc(null!));
+        var sorter = new BagSorterService(config, categorizer, armoireResolver, retainerService, new AutoRetainerIpc(null));
 
         bool started = sorter.ExecuteSort();
         Assert.False(started);
         Assert.Contains("No items in your bags", sorter.StatusMessage);
+    }
+
+    [Fact]
+    public void BagSorter_ArmoireWithdrawal_WhenNoRetainerSummoned_ReturnsZero()
+    {
+        var config = new PluginConfiguration();
+        var categorizer = new ItemCategorizer(null);
+        var armoireResolver = new ArmoireResolver(null);
+        var retainerService = new RetainerService(null, null, config, null);
+        var sorter = new BagSorterService(config, categorizer, armoireResolver, retainerService, new AutoRetainerIpc(null));
+
+        int drawn = sorter.DrawArmoireFromActiveRetainer();
+        Assert.Equal(0, drawn);
     }
 
     [Theory]

@@ -17,12 +17,13 @@ public class CoreTests
     }
 
     [Theory]
-    [InlineData(44, RetainerRole.Crafting)]
-    [InlineData(45, RetainerRole.Crafting)]
-    [InlineData(42, RetainerRole.FoodAndPotions)]
-    [InlineData(43, RetainerRole.FoodAndPotions)]
-    [InlineData(55, RetainerRole.Gathering)]
-    [InlineData(56, RetainerRole.Gathering)]
+    [InlineData(43, RetainerRole.FoodAndPotions)] // Medicine
+    [InlineData(44, RetainerRole.FoodAndPotions)] // Ingredients
+    [InlineData(45, RetainerRole.FoodAndPotions)] // Meals
+    [InlineData(46, RetainerRole.Gathering)]      // Seafood
+    [InlineData(30, RetainerRole.Gathering)]      // Fishing Tackle
+    [InlineData(48, RetainerRole.Crafting)]       // Metal
+    [InlineData(49, RetainerRole.Crafting)]       // Lumber
     [InlineData(1, RetainerRole.None)]
     public void ItemCategorizer_CorrectlyMapsCategoriesToRoles(uint searchCatId, RetainerRole expectedRole)
     {

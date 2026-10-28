@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
@@ -33,8 +34,8 @@ public sealed class MainWindow : Window
 
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(520, 420),
-            MaximumSize = new Vector2(900, 800),
+            MinimumSize = new Vector2(520, 440),
+            MaximumSize = new Vector2(900, 850),
         };
     }
 
@@ -174,9 +175,54 @@ public sealed class MainWindow : Window
         ImGui.Separator();
         ImGui.Spacing();
 
-        if (ImGui.Button("📥 Sort Bags into Retainers", new Vector2(230, 32)))
+        string activeRetainer = plugin.BagSorterService.GetActiveRetainerName();
+        var plan = plugin.BagSorterService.GetSortPlan();
+
+        if (plan.Count > 0)
         {
-            // Plan and execution queue
+            ImGui.TextColored(new Vector4(0.4f, 1f, 0.4f, 1f), $"💼 {plan.Count} items in your bags match configured retainer roles:");
+            var roleGroups = plan.GroupBy(p => p.Role);
+            foreach (var group in roleGroups)
+            {
+                ImGui.BulletText($"{group.Key}: {group.Count()} items ready");
+            }
+        }
+        else
+        {
+            ImGui.TextDisabled("💼 No items in your bags currently match any configured retainer roles.");
+        }
+
+        ImGui.Spacing();
+
+        string buttonLabel = !string.IsNullOrEmpty(activeRetainer)
+            ? $"📥 Sort Bags into {activeRetainer}"
+            : "📥 Sort Bags into Retainers";
+
+        bool isSorting = plugin.BagSorterService.IsSorting;
+        if (isSorting)
+        {
+            ImGui.BeginDisabled();
+            ImGui.Button("⏳ Depositing Items...", new Vector2(260, 34));
+            ImGui.EndDisabled();
+        }
+        else
+        {
+            if (ImGui.Button(buttonLabel, new Vector2(260, 34)))
+            {
+                plugin.BagSorterService.ExecuteSort();
+            }
+        }
+
+        if (!string.IsNullOrEmpty(plugin.BagSorterService.StatusMessage))
+        {
+            ImGui.Spacing();
+            ImGui.TextDisabled($"Status: {plugin.BagSorterService.StatusMessage}");
+        }
+
+        if (string.IsNullOrEmpty(activeRetainer))
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.85f, 0.85f, 0.5f, 1f), "💡 Summon any retainer at the bell (or let AutoRetainer run) to deposit matching items.");
         }
     }
 

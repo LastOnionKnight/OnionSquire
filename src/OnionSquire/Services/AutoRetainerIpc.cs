@@ -11,15 +11,16 @@ namespace OnionSquire.Services;
 /// </summary>
 public class AutoRetainerIpc : IDisposable
 {
-    private readonly IDalamudPluginInterface pluginInterface;
+    private readonly IDalamudPluginInterface? pluginInterface;
 
-    private readonly ICallGateSubscriber<bool> isReadySubscriber;
-    private readonly ICallGateSubscriber<ulong[]> getRegisteredCharactersSubscriber;
+    private readonly ICallGateSubscriber<bool>? isReadySubscriber;
+    private readonly ICallGateSubscriber<ulong[]>? getRegisteredCharactersSubscriber;
 
     public bool IsAvailable
     {
         get
         {
+            if (isReadySubscriber == null) return false;
             try
             {
                 return isReadySubscriber.InvokeFunc();
@@ -31,12 +32,14 @@ public class AutoRetainerIpc : IDisposable
         }
     }
 
-    public AutoRetainerIpc(IDalamudPluginInterface pluginInterface)
+    public AutoRetainerIpc(IDalamudPluginInterface? pluginInterface)
     {
         this.pluginInterface = pluginInterface;
-
-        isReadySubscriber = pluginInterface.GetIpcSubscriber<bool>("AutoRetainer.Ready");
-        getRegisteredCharactersSubscriber = pluginInterface.GetIpcSubscriber<ulong[]>("AutoRetainer.GetRegisteredCharacters");
+        if (pluginInterface != null)
+        {
+            isReadySubscriber = pluginInterface.GetIpcSubscriber<bool>("AutoRetainer.Ready");
+            getRegisteredCharactersSubscriber = pluginInterface.GetIpcSubscriber<ulong[]>("AutoRetainer.GetRegisteredCharacters");
+        }
     }
 
     /// <summary>
@@ -44,7 +47,7 @@ public class AutoRetainerIpc : IDisposable
     /// </summary>
     public ulong[] GetRegisteredCharacters()
     {
-        if (!IsAvailable) return Array.Empty<ulong>();
+        if (!IsAvailable || getRegisteredCharactersSubscriber == null) return Array.Empty<ulong>();
         try
         {
             return getRegisteredCharactersSubscriber.InvokeFunc();
@@ -60,10 +63,10 @@ public class AutoRetainerIpc : IDisposable
     /// </summary>
     public void RequestRetainerPostprocess()
     {
-        if (!IsAvailable) return;
+        if (!IsAvailable || pluginInterface == null) return;
         try
         {
-            pluginInterface.GetIpcSubscriber<object>("AutoRetainer.RequestRetainerPostprocess").InvokeAction();
+            pluginInterface.GetIpcSubscriber<object>("AutoRetainer.RequestPostprocess").InvokeAction();
         }
         catch
         {
@@ -75,10 +78,10 @@ public class AutoRetainerIpc : IDisposable
     /// </summary>
     public void FinishRetainerPostProcess()
     {
-        if (!IsAvailable) return;
+        if (!IsAvailable || pluginInterface == null) return;
         try
         {
-            pluginInterface.GetIpcSubscriber<object>("AutoRetainer.FinishRetainerPostProcess").InvokeAction();
+            pluginInterface.GetIpcSubscriber<object>("AutoRetainer.FinishPostprocessRequest").InvokeAction();
         }
         catch
         {

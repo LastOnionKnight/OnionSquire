@@ -20,6 +20,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IPlayerState PlayerState { get; private set; } = null!;
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
+    [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     internal PluginConfiguration Configuration { get; }
@@ -28,6 +29,7 @@ public sealed class Plugin : IDalamudPlugin
     internal AutoRetainerIpc AutoRetainerIpc { get; }
     internal ArrService ArrService { get; }
     internal RetainerService RetainerService { get; }
+    internal BagSorterService BagSorterService { get; }
 
     internal readonly WindowSystem WindowSystem = new("OnionSquire");
     private readonly MainWindow mainWindow;
@@ -42,6 +44,7 @@ public sealed class Plugin : IDalamudPlugin
         AutoRetainerIpc = new AutoRetainerIpc(PluginInterface);
         ArrService = new ArrService(PluginInterface, Log);
         RetainerService = new RetainerService(DataManager, PlayerState, Configuration, Log);
+        BagSorterService = new BagSorterService(Configuration, ItemCategorizer, RetainerService, AutoRetainerIpc, Framework, ChatGui, Log);
 
         mainWindow = new MainWindow(this);
         WindowSystem.AddWindow(mainWindow);
@@ -87,6 +90,7 @@ public sealed class Plugin : IDalamudPlugin
         CommandManager.RemoveHandler(CommandName);
         CommandManager.RemoveHandler(ShortCommandName);
 
+        BagSorterService.Dispose();
         AutoRetainerIpc.Dispose();
     }
 

@@ -14,6 +14,16 @@ public sealed class MainWindow : Window
     private readonly ArmoireResolver armoireResolver;
     private readonly ItemCategorizer itemCategorizer;
 
+    private static readonly string[] RoleNames =
+    {
+        "None / Manual",
+        "Crafting Materials",
+        "Gathering",
+        "Food & Potions",
+        "Gear & Glamour",
+        "Miscellaneous"
+    };
+
     public MainWindow(Plugin plugin) : base("OnionSquire###OnionSquireMainWindow")
     {
         this.plugin = plugin;
@@ -23,8 +33,8 @@ public sealed class MainWindow : Window
 
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(480, 360),
-            MaximumSize = new Vector2(800, 700),
+            MinimumSize = new Vector2(520, 420),
+            MaximumSize = new Vector2(900, 800),
         };
     }
 
@@ -50,6 +60,13 @@ public sealed class MainWindow : Window
         else
         {
             ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), "[ARR Not Detected]");
+        }
+
+        ImGui.SameLine();
+        int retainerCount = plugin.RetainerService.RetainerCount;
+        if (retainerCount > 0)
+        {
+            ImGui.TextColored(new Vector4(1f, 0.84f, 0.0f, 1f), $"[{retainerCount} Retainers Active]");
         }
 
         ImGui.Separator();
@@ -84,30 +101,71 @@ public sealed class MainWindow : Window
         ImGui.TextWrapped("Assign roles to retainers so your inventory can automatically deposit matching items when you interact with the Summoning Bell.");
         ImGui.Spacing();
 
-        ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), "Configured Retainers:");
-        ImGui.Separator();
+        var retainers = plugin.RetainerService.Retainers;
 
-        // Sample slots / configured retainers
-        string[] sampleRetainers = { "Retainer 1", "Retainer 2", "Retainer 3", "Retainer 4" };
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), $"Configured Retainers ({retainers.Count} detected):");
+        ImGui.SameLine();
 
-        foreach (var ret in sampleRetainers)
+        if (ImGui.SmallButton("🔄 Refresh Retainers"))
         {
-            if (!configuration.RetainerRoles.TryGetValue(ret, out var currentRole))
+            plugin.RetainerService.RefreshRetainers();
+        }
+
+        if (retainers.Count > 0 && !string.IsNullOrEmpty(retainers[0].Source))
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled($"({retainers[0].Source})");
+        }
+
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (retainers.Count == 0)
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(1f, 0.75f, 0.3f, 1f), "No retainers detected yet.");
+            ImGui.Spacing();
+            ImGui.TextWrapped("Interact with any Summoning Bell in-game, or make sure AutoRetainer or A Realm Reorganized is enabled. OnionSquire will automatically detect and populate your retainers.");
+            ImGui.Spacing();
+            if (ImGui.Button("🔍 Scan for Retainers", new Vector2(180, 28)))
+            {
+                plugin.RetainerService.RefreshRetainers();
+            }
+            return;
+        }
+
+        for (int i = 0; i < retainers.Count; i++)
+        {
+            var ret = retainers[i];
+
+            if (!configuration.RetainerRoles.TryGetValue(ret.Name, out var currentRole))
             {
                 currentRole = RetainerRole.None;
             }
 
             ImGui.AlignTextToFramePadding();
-            ImGui.TextUnformatted($"{ret}:");
-            ImGui.SameLine(130);
 
-            int roleInt = (int)currentRole;
-            string[] roleNames = { "None / Manual", "Crafting Materials", "Gathering", "Food & Potions", "Gear & Glamour", "Miscellaneous" };
+            // Retainer number and Name
+            string nameDisplay = $"#{i + 1}  {ret.Name}";
+            ImGui.TextUnformatted(nameDisplay);
 
-            ImGui.SetNextItemWidth(200);
-            if (ImGui.Combo($"##role_{ret}", ref roleInt, roleNames, roleNames.Length))
+            // Job & Level pill
+            if (ret.ClassJob > 0)
             {
-                configuration.RetainerRoles[ret] = (RetainerRole)roleInt;
+                ImGui.SameLine(180);
+                string jobAbbrev = plugin.RetainerService.GetJobAbbreviation(ret.ClassJob);
+                ImGui.TextColored(new Vector4(0.7f, 0.85f, 1f, 1f), $"[{jobAbbrev} {ret.Level}]");
+            }
+
+            // Role selector
+            ImGui.SameLine(260);
+            int roleInt = (int)currentRole;
+
+            ImGui.SetNextItemWidth(210);
+            if (ImGui.Combo($"##role_{ret.Name}_{i}", ref roleInt, RoleNames, RoleNames.Length))
+            {
+                configuration.RetainerRoles[ret.Name] = (RetainerRole)roleInt;
                 configuration.Save();
             }
         }
@@ -116,7 +174,7 @@ public sealed class MainWindow : Window
         ImGui.Separator();
         ImGui.Spacing();
 
-        if (ImGui.Button("📥 Sort Bags into Retainers", new Vector2(220, 30)))
+        if (ImGui.Button("📥 Sort Bags into Retainers", new Vector2(230, 32)))
         {
             // Plan and execution queue
         }
@@ -129,7 +187,7 @@ public sealed class MainWindow : Window
         ImGui.Spacing();
 
         ImGui.TextUnformatted($"Known Armoire catalog entries: {armoireResolver.TotalEligibleArmoireItems}");
-        
+
         var cachedArmoire = plugin.ArrService.LoadCachedArmoireIds();
         if (cachedArmoire.Count > 0)
         {
@@ -186,6 +244,24 @@ public sealed class MainWindow : Window
         {
             configuration.AutoCheckArmoireOnBellOpen = autoCheck;
             configuration.Save();
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), "Retainer Discovery Status:");
+        var retainers = plugin.RetainerService.Retainers;
+        ImGui.TextUnformatted($"Total Retainers: {retainers.Count}");
+        if (retainers.Count > 0)
+        {
+            ImGui.TextDisabled($"Discovery Source: {retainers[0].Source}");
+            for (int i = 0; i < retainers.Count; i++)
+            {
+                var r = retainers[i];
+                string job = plugin.RetainerService.GetJobAbbreviation(r.ClassJob);
+                ImGui.BulletText($"{r.Name} (ID: {r.RetainerId}) - {job} Lv {r.Level}");
+            }
         }
     }
 }

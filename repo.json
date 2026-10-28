@@ -3,7 +3,7 @@
     "Author": "LastOnionKnight",
     "Name": "OnionSquire",
     "InternalName": "OnionSquire",
-    "AssemblyVersion": "0.1.0.0",
+    "AssemblyVersion": "0.1.1.0",
     "Description": "Organize retainers by role (crafting, gathering, food) and draw all armoire-eligible items to clean up retainer space.",
     "Punchline": "Smart retainer organizer & armoire drawer for FFXIV.",
     "RepoUrl": "https://github.com/LastOnionKnight/OnionSquire",
@@ -18,9 +18,9 @@
       "onionsquire"
     ],
     "DalamudApiLevel": 15,
-    "DownloadLinkInstall": "https://github.com/LastOnionKnight/OnionSquire/releases/download/v0.1.0/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/LastOnionKnight/OnionSquire/releases/download/v0.1.0/latest.zip",
-    "DownloadLinkTesting": "https://github.com/LastOnionKnight/OnionSquire/releases/download/v0.1.0/latest.zip",
-    "LastUpdate": 1793197354
+    "DownloadLinkInstall": "https://github.com/LastOnionKnight/OnionSquire/releases/download/v0.1.1/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/LastOnionKnight/OnionSquire/releases/download/v0.1.1/latest.zip",
+    "DownloadLinkTesting": "https://github.com/LastOnionKnight/OnionSquire/releases/download/v0.1.1/latest.zip",
+    "LastUpdate": 1793202680
   }
 ]

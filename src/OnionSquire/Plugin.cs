@@ -17,6 +17,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IClientState ClientState { get; private set; } = null!;
+    [PluginService] internal static IPlayerState PlayerState { get; private set; } = null!;
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
@@ -26,9 +27,11 @@ public sealed class Plugin : IDalamudPlugin
     internal ItemCategorizer ItemCategorizer { get; }
     internal AutoRetainerIpc AutoRetainerIpc { get; }
     internal ArrService ArrService { get; }
+    internal RetainerService RetainerService { get; }
 
     internal readonly WindowSystem WindowSystem = new("OnionSquire");
     private readonly MainWindow mainWindow;
+    private int frameworkTicks = 0;
 
     public Plugin()
     {
@@ -38,6 +41,7 @@ public sealed class Plugin : IDalamudPlugin
         ItemCategorizer = new ItemCategorizer(DataManager);
         AutoRetainerIpc = new AutoRetainerIpc(PluginInterface);
         ArrService = new ArrService(PluginInterface, Log);
+        RetainerService = new RetainerService(DataManager, PlayerState, Configuration, Log);
 
         mainWindow = new MainWindow(this);
         WindowSystem.AddWindow(mainWindow);
@@ -54,11 +58,26 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
         PluginInterface.UiBuilder.OpenConfigUi += ToggleMainUi;
 
+        Framework.Update += OnFrameworkUpdate;
+
         Log.Information("OnionSquire initialized successfully.");
+    }
+
+    private void OnFrameworkUpdate(IFramework framework)
+    {
+        // Periodically refresh retainers if count is 0 or when near summoning bell
+        if (++frameworkTicks % 120 == 0)
+        {
+            if (RetainerService.RetainerCount == 0 || mainWindow.IsOpen)
+            {
+                RetainerService.RefreshRetainers();
+            }
+        }
     }
 
     public void Dispose()
     {
+        Framework.Update -= OnFrameworkUpdate;
         PluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
         PluginInterface.UiBuilder.OpenConfigUi -= ToggleMainUi;
@@ -67,6 +86,8 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.RemoveHandler(CommandName);
         CommandManager.RemoveHandler(ShortCommandName);
+
+        AutoRetainerIpc.Dispose();
     }
 
     private void OnCommand(string command, string args) => ToggleMainUi();
